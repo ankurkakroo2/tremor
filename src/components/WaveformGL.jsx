@@ -33,9 +33,9 @@ const DEFAULT_PARAMS = {
     gravity: 0.5,
     decay: 0.98,
     elasticity: 0.9,
-    waveSpeed: 0.2,
+    waveSpeed: 0.25,
     waveEnergy: 0.55,
-    terrainPull: 0.05,
+    terrainPull: 0.06,
     // Visual
     maxStretch: 200,
     blur: 0,
