@@ -34,8 +34,8 @@ const DEFAULT_PARAMS = {
     decay: 0.98,
     elasticity: 0.9,
     waveSpeed: 0.2,
-    waveEnergy: 0.68,
-    terrainPull: 0.04,
+    waveEnergy: 0.55,
+    terrainPull: 0.05,
     // Visual
     maxStretch: 200,
     blur: 0,
@@ -528,18 +528,29 @@ export default function WaveformGL({ isSimulating }) {
                         ? Math.max(0.3, 1.0 - slope / 150)  // Uphill: lose energy
                         : Math.min(1.1, 1.0 - slope / 300); // Downhill: slight boost, capped
 
-                    const waveTargetY = terrainHeight + sourceDisplacement * P.decay * slopeFactor;
+                    const waveDisplacement = sourceDisplacement * P.decay * slopeFactor;
 
-                    // Neighbor influence
-                    let neighborSum = 0;
+                    // Neighbor influence - use displacement above terrain, not raw y
+                    let neighborDispSum = 0;
                     let count = 0;
-                    if (c > 0) { neighborSum += gridRef.current[r][c - 1].y; count++; }
-                    if (c < TOTAL_COLS - 1) { neighborSum += gridRef.current[r][c + 1].y; count++; }
-
-                    let finalTarget = waveTargetY;
-                    if (count > 0) {
-                        finalTarget = (finalTarget * 0.4) + ((neighborSum / count) * 0.6);
+                    if (c > 0) {
+                        const left = gridRef.current[r][c - 1];
+                        neighborDispSum += (left.y - left.baseY);
+                        count++;
                     }
+                    if (c < TOTAL_COLS - 1) {
+                        const right = gridRef.current[r][c + 1];
+                        neighborDispSum += (right.y - right.baseY);
+                        count++;
+                    }
+
+                    // Blend wave displacement with neighbor displacement, then add to terrain
+                    let finalDisplacement = waveDisplacement;
+                    if (count > 0) {
+                        const avgNeighborDisp = neighborDispSum / count;
+                        finalDisplacement = (waveDisplacement * 0.6) + (avgNeighborDisp * 0.4);
+                    }
+                    const finalTarget = terrainHeight + finalDisplacement;
 
                     p.velocity += (finalTarget - p.y) * P.elasticity;
                     p.velocity -= (p.y - terrainHeight) * P.terrainPull;
