@@ -77,8 +77,12 @@ export default function Waveform({ isSimulating }) {
 
         const centerY = height * 0.85;
 
-        // Clear background
-        ctx.fillStyle = '#050505';
+        // Clear background with gradient
+        const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width, height));
+        bgGradient.addColorStop(0, '#0a0a12');
+        bgGradient.addColorStop(0.5, '#050508');
+        bgGradient.addColorStop(1, '#000000');
+        ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, width, height);
 
         // Config
@@ -217,7 +221,7 @@ export default function Waveform({ isSimulating }) {
 
 
         // 3. RENDER LOOP
-        const project = (r, c, worldY) => {
+        const project = (r, c, worldY, particleHeight) => {
             const wx = (c - totalCols / 2) * X_SPACING;
             const wz = r * Z_SPACING;
 
@@ -235,10 +239,11 @@ export default function Waveform({ isSimulating }) {
             const sy = centerY - (ry * scale);
 
             const alpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2)));
-            return { x: sx, y: sy, scale, alpha };
+            // Intensity based on particle height (0-1, clamped), with NaN protection
+            const rawIntensity = particleHeight / (height * 0.3);
+            const intensity = Math.max(0, Math.min(1, isNaN(rawIntensity) ? 0 : rawIntensity));
+            return { x: sx, y: sy, scale, alpha, intensity, depth: rz };
         };
-
-        ctx.lineWidth = 1;
 
         const finalPoints = [];
         for (let r = 0; r < GRID_ROWS; r++) {
@@ -246,12 +251,40 @@ export default function Waveform({ isSimulating }) {
             for (let c = 0; c < totalCols; c++) {
                 let audioY = gridRef.current[r][c].y;
                 const totalY = Math.max(0, audioY + 5);
-                finalPoints[r][c] = project(r, c, totalY);
+                finalPoints[r][c] = project(r, c, totalY, audioY);
             }
         }
 
-        // Horizontal Lines
+        // Helper: Get color based on intensity (cyan -> magenta gradient)
+        const getColor = (intensity, alpha) => {
+            // Hue: 180 (cyan) -> 280 (magenta) based on intensity
+            const hue = 180 + intensity * 100;
+            const saturation = 80 + intensity * 20;
+            const lightness = 50 + intensity * 20;
+            return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+        };
+
+        // Horizontal Lines with glow and dynamic thickness
+        ctx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+
         for (let r = 0; r < GRID_ROWS; r++) {
+            // Calculate average intensity for this row
+            let rowIntensity = 0;
+            let validPoints = 0;
+            for (let c = 0; c < totalCols; c++) {
+                const p = finalPoints[r][c];
+                if (p) { rowIntensity += p.intensity; validPoints++; }
+            }
+            rowIntensity = validPoints > 0 ? rowIntensity / validPoints : 0;
+
+            // Dynamic line thickness based on proximity to center and intensity
+            const proximityFactor = 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2));
+            const baseThickness = 0.5 + proximityFactor * 1.5 + rowIntensity * 2;
+            ctx.lineWidth = Math.max(0.5, baseThickness);
+
+            // Glow intensity based on row activity
+            ctx.shadowBlur = 8 + rowIntensity * 15;
+
             ctx.beginPath();
             let started = false;
             for (let c = 0; c < totalCols; c++) {
@@ -260,15 +293,28 @@ export default function Waveform({ isSimulating }) {
                 if (!started) { ctx.moveTo(p.x, p.y); started = true; }
                 else { ctx.lineTo(p.x, p.y); }
             }
-            const rowAlpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2.5))) * 0.5;
+            const rowAlpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2.5))) * 0.6;
             if (rowAlpha > 0) {
-                ctx.strokeStyle = `rgba(0, 255, 255, ${rowAlpha})`;
+                ctx.strokeStyle = getColor(rowIntensity, rowAlpha);
                 ctx.stroke();
             }
         }
 
-        // Vertical Lines
+        // Vertical Lines with subtle glow
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = 'rgba(0, 200, 255, 0.5)';
+        ctx.lineWidth = 0.5;
+
         for (let c = 0; c < totalCols; c++) {
+            // Calculate average intensity for this column
+            let colIntensity = 0;
+            let validPoints = 0;
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const p = finalPoints[r][c];
+                if (p) { colIntensity += p.intensity; validPoints++; }
+            }
+            colIntensity = validPoints > 0 ? colIntensity / validPoints : 0;
+
             ctx.beginPath();
             let started = false;
             for (let r = 0; r < GRID_ROWS; r++) {
@@ -277,22 +323,37 @@ export default function Waveform({ isSimulating }) {
                 if (!started) { ctx.moveTo(p.x, p.y); started = true; }
                 else { ctx.lineTo(p.x, p.y); }
             }
-            ctx.strokeStyle = `rgba(0, 200, 255, 0.15)`;
+            const alpha = 0.1 + colIntensity * 0.15;
+            ctx.strokeStyle = getColor(colIntensity * 0.5, alpha);
             ctx.stroke();
         }
 
-        // Dots
+        // Dots with glow based on intensity
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < totalCols; c++) {
                 const p = finalPoints[r][c];
                 if (!p || p.alpha < 0.05) continue;
-                const size = 1.5 * p.scale;
-                ctx.fillStyle = `rgba(180, 240, 255, ${p.alpha})`;
+
+                // Dynamic size: base + intensity bonus
+                const size = (1.2 + p.intensity * 1.5) * p.scale;
+
+                // Glow based on intensity
+                ctx.shadowBlur = 3 + p.intensity * 12;
+
+                // Color shifts from white-cyan to bright magenta based on intensity
+                const hue = 180 + p.intensity * 100;
+                ctx.fillStyle = `hsla(${hue}, 100%, ${70 + p.intensity * 20}%, ${p.alpha * (0.6 + p.intensity * 0.4)})`;
+
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, Math.max(0.5, size), 0, Math.PI * 2);
                 ctx.fill();
             }
         }
+
+        // Reset shadow for next frame
+        ctx.shadowBlur = 0;
 
         requestRef.current = requestAnimationFrame(draw);
     };
