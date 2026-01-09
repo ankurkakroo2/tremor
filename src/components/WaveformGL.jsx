@@ -11,20 +11,24 @@ const TOOLS_INFO = {
     camHeight: "Vertical camera position. Lower = Horizon view.",
     camZ: "Camera zoom/distance. Negative is further back.",
     maxStretch: "Maximum wave height. Lower = More compression, stretchy feel.",
-    blur: "Visual blur amount. Higher = Softer, dreamier look."
+    blur: "Visual blur amount. Higher = Softer, dreamier look.",
+    terrainHeight: "Height of hills/mountains. Higher = Taller terrain.",
+    terrainScale: "Size of hills. Higher = Larger, rolling hills. Lower = More frequent bumps."
 };
 
 const DEFAULT_PARAMS = {
-    sensitivity: 1.5,
+    sensitivity: 5.0,
     gravity: 0.5,
     attack: 0.25,
     decay: 0.98,
     elasticity: 0.9,
     smoothing: 2,
     camHeight: 400,
-    camZ: -350,
+    camZ: -160,
     maxStretch: 200,
-    blur: 1
+    blur: 0,
+    terrainHeight: 1.0,
+    terrainScale: 1.0
 };
 
 // Vertex shader - transforms grid points to screen space
@@ -203,6 +207,45 @@ export default function WaveformGL({ isSimulating }) {
     const GRID_ROWS = 100;
     const TOTAL_COLS = 400;
 
+    // Generate terrain heightmap (hills/mountains)
+    const terrainRef = useRef(null);
+    const lastTerrainParamsRef = useRef({ height: 1.0, scale: 1.0 });
+
+    const generateTerrain = useCallback((heightMult = 1.0, scaleMult = 1.0) => {
+        const terrain = [];
+        const freq = 1.0 / scaleMult; // Lower scale = higher frequency = more bumps
+
+        for (let r = 0; r < GRID_ROWS; r++) {
+            terrain[r] = [];
+            for (let c = 0; c < TOTAL_COLS; c++) {
+                // Normalized coordinates
+                const nx = c / TOTAL_COLS;
+                const nz = r / GRID_ROWS;
+
+                // Multiple octaves of sine waves for organic hills
+                let height = 0;
+
+                // Large rolling hills
+                height += Math.sin(nx * Math.PI * 4 * freq) * 60;
+                height += Math.sin(nz * Math.PI * 3 * freq) * 50;
+
+                // Medium bumps
+                height += Math.sin(nx * Math.PI * 8 * freq + 1.5) * Math.cos(nz * Math.PI * 6 * freq) * 30;
+
+                // Small details
+                height += Math.sin(nx * Math.PI * 16 * freq + nz * Math.PI * 12 * freq) * 15;
+                height += Math.cos(nx * Math.PI * 20 * freq - nz * Math.PI * 8 * freq) * 10;
+
+                // Add some variation based on position
+                height += Math.sin((nx + nz) * Math.PI * 10 * freq) * 20;
+
+                // Apply height multiplier and ensure positive
+                terrain[r][c] = Math.max(10, (height * heightMult) + 80);
+            }
+        }
+        return terrain;
+    }, []);
+
     const updateParam = (key, value) => {
         const newParams = { ...params, [key]: parseFloat(value) };
         setParams(newParams);
@@ -344,10 +387,38 @@ export default function WaveformGL({ isSimulating }) {
         const { width, height } = canvas;
         const P = paramsRef.current;
 
-        // Initialize grid if needed
+        // Check if terrain params changed - regenerate if needed
+        const terrainParamsChanged =
+            lastTerrainParamsRef.current.height !== P.terrainHeight ||
+            lastTerrainParamsRef.current.scale !== P.terrainScale;
+
+        if (!terrainRef.current || terrainParamsChanged) {
+            terrainRef.current = generateTerrain(P.terrainHeight, P.terrainScale);
+            lastTerrainParamsRef.current = { height: P.terrainHeight, scale: P.terrainScale };
+
+            // Update existing grid particles to new terrain heights
+            if (gridRef.current.length > 0) {
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < TOTAL_COLS; c++) {
+                        const newBaseY = terrainRef.current[r][c];
+                        const particle = gridRef.current[r][c];
+                        const displacement = particle.y - particle.baseY;
+                        particle.baseY = newBaseY;
+                        particle.y = newBaseY + Math.max(0, displacement);
+                    }
+                }
+            }
+        }
+        const terrain = terrainRef.current;
+
+        // Initialize grid if needed - particles start at terrain height
         if (gridRef.current.length === 0 || gridRef.current[0].length !== TOTAL_COLS) {
-            gridRef.current = Array(GRID_ROWS).fill(null).map(() =>
-                Array(TOTAL_COLS).fill(null).map(() => ({ y: 0, velocity: 0 }))
+            gridRef.current = Array(GRID_ROWS).fill(null).map((_, r) =>
+                Array(TOTAL_COLS).fill(null).map((_, c) => ({
+                    y: terrain[r][c],  // Start at terrain height
+                    velocity: 0,
+                    baseY: terrain[r][c]  // Remember terrain height
+                }))
             );
         }
 
@@ -394,28 +465,47 @@ export default function WaveformGL({ isSimulating }) {
             smoothedTargets.set(rawTargets);
         }
 
-        // Apply physics to center row
+        // Apply physics to center row - audio lifts above terrain
         for (let c = 0; c < TOTAL_COLS; c++) {
-            const targetAudioY = smoothedTargets[c];
             const particle = gridRef.current[centerRow][c];
-            if (targetAudioY > particle.y) {
-                particle.y += (targetAudioY - particle.y) * P.attack;
+            const terrainHeight = particle.baseY;
+            const targetY = terrainHeight + smoothedTargets[c]; // Terrain + audio displacement
+
+            if (targetY > particle.y) {
+                particle.y += (targetY - particle.y) * P.attack;
                 particle.velocity = 0;
             } else {
                 particle.velocity -= P.gravity;
                 particle.y += particle.velocity;
-                if (particle.y < 0) { particle.y = 0; particle.velocity = 0; }
+                // Settle back to terrain height, not 0
+                if (particle.y < terrainHeight) {
+                    particle.y = terrainHeight;
+                    particle.velocity = 0;
+                }
             }
         }
 
-        // Elastic propagation
+        // Elastic propagation - waves settle to terrain, affected by slopes
         const propagate = (startR, endR, stepR, lookBackR) => {
             for (let r = startR; r !== endR; r += stepR) {
                 for (let c = 0; c < TOTAL_COLS; c++) {
                     const p = gridRef.current[r][c];
+                    const terrainHeight = p.baseY;
                     const sourceP = gridRef.current[r + lookBackR][c];
-                    const waveTargetY = sourceP.y * P.decay;
 
+                    // Wave displacement from source (how far above its terrain)
+                    const sourceDisplacement = sourceP.y - sourceP.baseY;
+
+                    // Terrain slope affects how much wave transfers
+                    const slope = terrainHeight - sourceP.baseY;
+                    // Uphill: reduce transfer, Downhill: slightly more transfer
+                    const slopeFactor = slope > 0
+                        ? Math.max(0.3, 1.0 - slope / 150)  // Uphill: lose energy
+                        : Math.min(1.1, 1.0 - slope / 300); // Downhill: slight boost, capped
+
+                    const waveTargetY = terrainHeight + sourceDisplacement * P.decay * slopeFactor;
+
+                    // Neighbor influence
                     let neighborSum = 0;
                     let count = 0;
                     if (c > 0) { neighborSum += gridRef.current[r][c - 1].y; count++; }
@@ -427,10 +517,12 @@ export default function WaveformGL({ isSimulating }) {
                     }
 
                     p.velocity += (finalTarget - p.y) * P.elasticity;
-                    p.velocity -= p.y * 0.1;
+                    p.velocity -= (p.y - terrainHeight) * 0.1; // Pull toward terrain
                     p.y += p.velocity * 0.5;
                     p.velocity *= 0.6;
-                    if (p.y < 0) p.y = 0;
+
+                    // Don't go below terrain
+                    if (p.y < terrainHeight) p.y = terrainHeight;
                 }
             }
         };
@@ -451,11 +543,13 @@ export default function WaveformGL({ isSimulating }) {
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < TOTAL_COLS; c++) {
                 const idx = r * TOTAL_COLS + c;
-                const audioY = gridRef.current[r][c].y;
-                const compressedY = compress(audioY);
+                const particle = gridRef.current[r][c];
+                const displacement = particle.y - particle.baseY; // Height above terrain
+                const compressedY = compress(particle.y);
                 heightData[idx] = compressedY + 5;
 
-                const rawIntensity = compressedY / (height * 0.3);
+                // Intensity based on displacement above terrain
+                const rawIntensity = displacement / (height * 0.15);
                 intensityData[idx] = Math.max(0, Math.min(1, isNaN(rawIntensity) ? 0 : rawIntensity));
             }
         }
@@ -546,7 +640,9 @@ export default function WaveformGL({ isSimulating }) {
                         else if (key === 'smoothing') { min = 0; max = 20; step = 1; }
                         else if (key === 'maxStretch') { min = 50; max = 500; step = 10; }
                         else if (key === 'blur') { min = 0; max = 5; step = 0.5; }
-                        else { min = 0.1; max = 3.0; step = 0.1; }
+                        else if (key === 'terrainHeight') { min = 0; max = 3; step = 0.1; }
+                        else if (key === 'terrainScale') { min = 0.3; max = 3; step = 0.1; }
+                        else { min = 0.1; max = 10.0; step = 0.1; } // Sensitivity
 
                         return (
                             <div key={key} style={{ display: 'flex', flexDirection: 'column', minWidth: '160px' }}
