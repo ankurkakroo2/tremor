@@ -13,13 +13,13 @@ const TOOLS_INFO = {
 };
 
 const DEFAULT_PARAMS = {
-    sensitivity: 0.8,
-    gravity: 0.2,
+    sensitivity: 1.5,
+    gravity: 0.5,
     attack: 0.25,
     decay: 0.98,
     elasticity: 0.9,
     smoothing: 2, // Default small blur radius
-    camHeight: 80,
+    camHeight: 200,
     camZ: -200
 };
 
@@ -86,13 +86,13 @@ export default function Waveform({ isSimulating }) {
         ctx.fillRect(0, 0, width, height);
 
         // Config
-        const totalCols = 200;
+        const totalCols = 400;
         const step = Math.floor(data.length / totalCols) || 1;
 
         // 3D Constants
         const FOCAL_LENGTH = 300;
         const Z_SPACING = 20;
-        const X_SPACING = 15;
+        const X_SPACING = 7.5;
 
         // Camera Params
         const CAMERA_HEIGHT = P.camHeight;
@@ -255,17 +255,19 @@ export default function Waveform({ isSimulating }) {
             }
         }
 
-        // Helper: Get color based on intensity (cyan -> magenta gradient)
+        // Helper: Get color based on intensity (green spectrum)
         const getColor = (intensity, alpha) => {
-            // Hue: 180 (cyan) -> 280 (magenta) based on intensity
-            const hue = 180 + intensity * 100;
-            const saturation = 80 + intensity * 20;
-            const lightness = 50 + intensity * 20;
+            // Hue: 150 (teal-green) -> 90 (lime) based on intensity
+            const hue = 150 - intensity * 60;
+            const saturation = 70 + intensity * 30;
+            const lightness = 45 + intensity * 25;
             return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
         };
 
         // Horizontal Lines with glow and dynamic thickness
-        ctx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+        // Note: shadowBlur is expensive - disable if performance issues
+        const enableGlow = false;
+        if (enableGlow) ctx.shadowColor = 'rgba(100, 255, 100, 0.8)';
 
         for (let r = 0; r < GRID_ROWS; r++) {
             // Calculate average intensity for this row
@@ -283,7 +285,7 @@ export default function Waveform({ isSimulating }) {
             ctx.lineWidth = Math.max(0.5, baseThickness);
 
             // Glow intensity based on row activity
-            ctx.shadowBlur = 8 + rowIntensity * 15;
+            if (enableGlow) ctx.shadowBlur = 8 + rowIntensity * 15;
 
             ctx.beginPath();
             let started = false;
@@ -301,8 +303,10 @@ export default function Waveform({ isSimulating }) {
         }
 
         // Vertical Lines with subtle glow
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = 'rgba(0, 200, 255, 0.5)';
+        if (enableGlow) {
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = 'rgba(100, 220, 100, 0.5)';
+        }
         ctx.lineWidth = 0.5;
 
         for (let c = 0; c < totalCols; c++) {
@@ -329,7 +333,7 @@ export default function Waveform({ isSimulating }) {
         }
 
         // Dots with glow based on intensity
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+        if (enableGlow) ctx.shadowColor = 'rgba(180, 255, 180, 0.9)';
 
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < totalCols; c++) {
@@ -340,11 +344,11 @@ export default function Waveform({ isSimulating }) {
                 const size = (1.2 + p.intensity * 1.5) * p.scale;
 
                 // Glow based on intensity
-                ctx.shadowBlur = 3 + p.intensity * 12;
+                if (enableGlow) ctx.shadowBlur = 3 + p.intensity * 12;
 
-                // Color shifts from white-cyan to bright magenta based on intensity
-                const hue = 180 + p.intensity * 100;
-                ctx.fillStyle = `hsla(${hue}, 100%, ${70 + p.intensity * 20}%, ${p.alpha * (0.6 + p.intensity * 0.4)})`;
+                // Color shifts within green spectrum based on intensity
+                const hue = 150 - p.intensity * 60;
+                ctx.fillStyle = `hsla(${hue}, 100%, ${60 + p.intensity * 30}%, ${p.alpha * (0.6 + p.intensity * 0.4)})`;
 
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, Math.max(0.5, size), 0, Math.PI * 2);
@@ -353,7 +357,7 @@ export default function Waveform({ isSimulating }) {
         }
 
         // Reset shadow for next frame
-        ctx.shadowBlur = 0;
+        if (enableGlow) ctx.shadowBlur = 0;
 
         requestRef.current = requestAnimationFrame(draw);
     };
@@ -379,11 +383,11 @@ export default function Waveform({ isSimulating }) {
                     {/* Controls Generator */}
                     {Object.keys(DEFAULT_PARAMS).map((key) => {
                         let min, max, step;
-                        if (key === 'camHeight') { min = 10; max = 200; step = 5; }
+                        if (key === 'camHeight') { min = 10; max = 500; step = 10; }
                         else if (key === 'camZ') { min = -500; max = 0; step = 10; }
                         else if (key === 'gravity') { min = 0.01; max = 1.0; step = 0.01; }
                         else if (key === 'attack') { min = 0.01; max = 1.0; step = 0.01; }
-                        else if (key === 'decay') { min = 0.1; max = 0.999; step = 0.001; } // User requested full range 0-1
+                        else if (key === 'decay') { min = 0.1; max = 0.9999; step = 0.0001; } // Extended range for longer-lasting waves
                         else if (key === 'elasticity') { min = 0.1; max = 0.99; step = 0.01; }
                         else if (key === 'smoothing') { min = 0; max = 20; step = 1; } // Radius 0-20
                         else { min = 0.1; max = 3.0; step = 0.1; } // Sensitivity
