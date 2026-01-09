@@ -517,9 +517,9 @@ export default function WaveformGL({ isSimulating }) {
                     }
 
                     p.velocity += (finalTarget - p.y) * P.elasticity;
-                    p.velocity -= (p.y - terrainHeight) * 0.1; // Pull toward terrain
-                    p.y += p.velocity * 0.5;
-                    p.velocity *= 0.6;
+                    p.velocity -= (p.y - terrainHeight) * 0.05; // Gentle pull toward terrain
+                    p.y += p.velocity * 0.3;
+                    p.velocity *= 0.62; // Balance: travel to bottom but not beyond
 
                     // Don't go below terrain
                     if (p.y < terrainHeight) p.y = terrainHeight;
