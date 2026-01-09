@@ -9,7 +9,9 @@ const TOOLS_INFO = {
     elasticity: "Connection strength. Higher = Solid sheet. Lower = Loose liquid.",
     smoothing: "Spreads audio input to neighbors. Higher = Smooth hills. 0 = Spiky needles.",
     camHeight: "Vertical camera position. Lower = Horizon view.",
-    camZ: "Camera zoom/distance. Negative is further back."
+    camZ: "Camera zoom/distance. Negative is further back.",
+    maxStretch: "Maximum wave height. Lower = More compression, stretchy feel.",
+    blur: "Visual blur amount. Higher = Softer, dreamier look."
 };
 
 const DEFAULT_PARAMS = {
@@ -20,7 +22,9 @@ const DEFAULT_PARAMS = {
     elasticity: 0.9,
     smoothing: 2, // Default small blur radius
     camHeight: 200,
-    camZ: -200
+    camZ: -200,
+    maxStretch: 200,
+    blur: 1
 };
 
 export default function Waveform({ isSimulating }) {
@@ -245,13 +249,21 @@ export default function Waveform({ isSimulating }) {
             return { x: sx, y: sy, scale, alpha, intensity, depth: rz };
         };
 
+        // Compression function - keeps lines closer at high amplitudes (stretchy feel)
+        const compress = (y) => {
+            if (y <= 0) return 0;
+            // Soft compression: fast rise initially, then compresses
+            return P.maxStretch * (1 - Math.exp(-y / P.maxStretch));
+        };
+
         const finalPoints = [];
         for (let r = 0; r < GRID_ROWS; r++) {
             finalPoints[r] = [];
             for (let c = 0; c < totalCols; c++) {
                 let audioY = gridRef.current[r][c].y;
-                const totalY = Math.max(0, audioY + 5);
-                finalPoints[r][c] = project(r, c, totalY, audioY);
+                const compressedY = compress(audioY);
+                const totalY = Math.max(0, compressedY + 5);
+                finalPoints[r][c] = project(r, c, totalY, compressedY);
             }
         }
 
@@ -265,7 +277,7 @@ export default function Waveform({ isSimulating }) {
         };
 
         // Horizontal Lines with glow and dynamic thickness
-        // Note: shadowBlur is expensive - disable if performance issues
+        // shadowBlur disabled - too expensive, using CSS filter instead
         const enableGlow = false;
         if (enableGlow) ctx.shadowColor = 'rgba(100, 255, 100, 0.8)';
 
@@ -285,7 +297,7 @@ export default function Waveform({ isSimulating }) {
             ctx.lineWidth = Math.max(0.5, baseThickness);
 
             // Glow intensity based on row activity
-            if (enableGlow) ctx.shadowBlur = 8 + rowIntensity * 15;
+            if (enableGlow) ctx.shadowBlur = 15 + rowIntensity * 25;
 
             ctx.beginPath();
             let started = false;
@@ -304,7 +316,7 @@ export default function Waveform({ isSimulating }) {
 
         // Vertical Lines with subtle glow
         if (enableGlow) {
-            ctx.shadowBlur = 4;
+            ctx.shadowBlur = 12;
             ctx.shadowColor = 'rgba(100, 220, 100, 0.5)';
         }
         ctx.lineWidth = 0.5;
@@ -344,7 +356,7 @@ export default function Waveform({ isSimulating }) {
                 const size = (1.2 + p.intensity * 1.5) * p.scale;
 
                 // Glow based on intensity
-                if (enableGlow) ctx.shadowBlur = 3 + p.intensity * 12;
+                if (enableGlow) ctx.shadowBlur = 10 + p.intensity * 20;
 
                 // Color shifts within green spectrum based on intensity
                 const hue = 150 - p.intensity * 60;
@@ -369,7 +381,7 @@ export default function Waveform({ isSimulating }) {
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, background: '#000' }}>
-            <canvas ref={canvasRef} />
+            <canvas ref={canvasRef} style={{ filter: `blur(${params.blur}px)` }} />
 
             {/* Control Panel */}
             {showControls && (
@@ -390,6 +402,8 @@ export default function Waveform({ isSimulating }) {
                         else if (key === 'decay') { min = 0.1; max = 0.9999; step = 0.0001; } // Extended range for longer-lasting waves
                         else if (key === 'elasticity') { min = 0.1; max = 0.99; step = 0.01; }
                         else if (key === 'smoothing') { min = 0; max = 20; step = 1; } // Radius 0-20
+                        else if (key === 'maxStretch') { min = 50; max = 500; step = 10; }
+                        else if (key === 'blur') { min = 0; max = 5; step = 0.5; }
                         else { min = 0.1; max = 3.0; step = 0.1; } // Sensitivity
 
                         return (
