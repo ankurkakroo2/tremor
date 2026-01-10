@@ -2,6 +2,8 @@
 
 A high-performance, interactive 3D particle waveform simulation built with React, Vite, and HTML5 Canvas. This project visualizes audio input as a dynamic, elastic mesh of particles.
 
+<img width="3104" height="2092" alt="image" src="https://github.com/user-attachments/assets/ad5af115-2c45-4c67-8b74-57f0c71ab407" />
+
 ## Features
 
 -   **3D Elastic Physics**: Particles behave like a connected fabric with elasticity, gravity, and wave propagation.
