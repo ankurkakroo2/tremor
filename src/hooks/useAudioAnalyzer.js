@@ -8,13 +8,17 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
   const sourceRef = useRef(null);
   const streamRef = useRef(null);
   const simulationTimeRef = useRef(0);
+  const dataArrayRef = useRef(null);
 
   useEffect(() => {
+    dataArrayRef.current = new Uint8Array(options.fftSize);
     let isMounted = true;
-    setIsReady(false); // Reset ready state on options change or mount
-    setError(null); // Clear previous errors
 
     const init = async () => {
+      if (!isMounted) return;
+      setIsReady(false);
+      setError(null);
+
       try {
         // 1. Create AudioContext if it doesn't exist or is closed
         if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -110,32 +114,24 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
     };
   }, [options.fftSize, options.simulation]);
 
-  const toggleSimulation = useCallback((enabled) => {
-    // This hook assumes efficient toggling might be needed,
-    // but simplified: consumer just changes key to re-init or we handle it here.
-    // For now, we rely on the `simulation` prop triggering re-init logic if handled in useEffect,
-    // but to avoid full re-mount, we can just switch data source logic.
-    // However, for this MVP, re-initialization is safer.
-  }, []);
-
-  // Function to get current waveform data
   const getWaveformData = useCallback(() => {
-    if (!analyzerRef.current && !options.simulation) return new Uint8Array(options.fftSize);
+    if (!analyzerRef.current && !options.simulation) return dataArrayRef.current || new Uint8Array(options.fftSize);
 
-    const dataArray = new Uint8Array(options.fftSize);
+    const dataArray = dataArrayRef.current;
 
     if (options.simulation) {
-      // Simulation Physics
       simulationTimeRef.current += 0.05;
       const t = simulationTimeRef.current;
+      const fftSize = options.fftSize;
+      const data = dataArray;
 
-      for (let i = 0; i < options.fftSize; i++) {
-        const x = (i / options.fftSize) * Math.PI * 8;
+      for (let i = 0; i < fftSize; i++) {
+        const x = (i / fftSize) * Math.PI * 8;
         const val = 128 +
           Math.sin(x + t) * 40 +
           Math.sin(x * 3 + t * 2) * 15 +
           (Math.random() - 0.5) * 2;
-        dataArray[i] = Math.max(0, Math.min(255, val));
+        data[i] = Math.max(0, Math.min(255, val));
       }
     } else if (analyzerRef.current) {
       analyzerRef.current.getByteTimeDomainData(dataArray);
