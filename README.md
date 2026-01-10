@@ -1,25 +1,26 @@
-# Particle Waveform Visualization
+# Tremor
 
-A high-performance, interactive 3D particle waveform simulation built with React, Vite, and HTML5 Canvas. This project visualizes audio input as a dynamic, elastic mesh of particles.
+A high-performance, interactive 3D audio terrain visualization built with React, Vite, and WebGL. Audio input creates rolling waves across a procedurally generated hilly landscape.
 
 ## Features
 
--   **3D Elastic Physics**: Particles behave like a connected fabric with elasticity, gravity, and wave propagation.
--   **Audio Reactivity**: Real-time microphone input drives the waveform, with adjustable sensitivity and smoothing.
--   **Interactive Control Panel**: Real-time tuning of simulation parameters:
-    -   **Sensitivity**: Adjust audio impact.
-    -   **Gravity & Attack**: Control particle physics.
-    -   **Decay & Elasticity**: Modify wave propagation and mesh rigidity.
-    -   **Smoothing**: Apply Gaussian blur to smooth out audio spikes.
-    -   **Camera**: Adjust height and zoom.
--   **High Density Grid**: Optimized for ~20,000+ particles (200x100 grid) running at 60fps.
--   **Visuals**: "Cyber/Synthwave" aesthetic with horizon-based perspective, depth fog, and cyan color palette.
+-   **WebGL Rendering**: GPU-accelerated visualization with custom shaders for smooth 60fps performance.
+-   **Procedural Terrain**: Dynamic hilly landscape with adjustable height and scale.
+-   **Audio Reactivity**: Real-time microphone input drives waves across the terrain.
+-   **Slope-Aware Physics**: Waves interact naturally with terrain - losing energy uphill, gaining momentum downhill.
+-   **Interactive Control Panel**: Real-time tuning organized by category:
+    -   **Audio**: Sensitivity, attack, smoothing
+    -   **Wave Physics**: Gravity, decay, elasticity, wave speed, energy, terrain pull
+    -   **Visual**: Max stretch, blur
+    -   **Camera**: Height, zoom
+    -   **Terrain**: Height, scale
+-   **High Density Grid**: 40,000 particles (400x100 grid) running at 60fps.
 
 ## Tech Stack
 
 -   **Frontend**: React
 -   **Build Tool**: Vite
--   **Rendering**: HTML5 Canvas (2D Context)
+-   **Rendering**: WebGL with custom GLSL shaders
 -   **Audio**: Web Audio API (`AnalyserNode`)
 
 ## Getting Started

@@ -22,8 +22,8 @@ function App() {
       {!started ? (
         <div className="landing-overlay">
           <div className="content">
-            <h1>Sonic Waveform</h1>
-            <p className="subtitle">Interactive Audio Visualization</p>
+            <h1>Tremor</h1>
+            <p className="subtitle">Interactive Audio Terrain</p>
 
             <div className="controls">
               <button onClick={handleStartMic} className="btn-primary">
