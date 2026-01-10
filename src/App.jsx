@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import Waveform from './components/Waveform'
+// import Waveform from './components/Waveform' // Canvas 2D version
+import WaveformGL from './components/WaveformGL' // WebGL version
 import './index.css'
 
 function App() {
@@ -40,7 +41,8 @@ function App() {
         </div>
       ) : (
         <>
-          <Waveform isSimulating={isSimulating} />
+          {/* <Waveform isSimulating={isSimulating} /> */}
+          <WaveformGL isSimulating={isSimulating} />
 
           <div className="active-controls">
             <button

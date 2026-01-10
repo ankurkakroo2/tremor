@@ -9,18 +9,22 @@ const TOOLS_INFO = {
     elasticity: "Connection strength. Higher = Solid sheet. Lower = Loose liquid.",
     smoothing: "Spreads audio input to neighbors. Higher = Smooth hills. 0 = Spiky needles.",
     camHeight: "Vertical camera position. Lower = Horizon view.",
-    camZ: "Camera zoom/distance. Negative is further back."
+    camZ: "Camera zoom/distance. Negative is further back.",
+    maxStretch: "Maximum wave height. Lower = More compression, stretchy feel.",
+    blur: "Visual blur amount. Higher = Softer, dreamier look."
 };
 
 const DEFAULT_PARAMS = {
-    sensitivity: 0.8,
-    gravity: 0.2,
+    sensitivity: 1.5,
+    gravity: 0.5,
     attack: 0.25,
     decay: 0.98,
     elasticity: 0.9,
     smoothing: 2, // Default small blur radius
-    camHeight: 80,
-    camZ: -200
+    camHeight: 200,
+    camZ: -200,
+    maxStretch: 200,
+    blur: 1
 };
 
 export default function Waveform({ isSimulating }) {
@@ -77,18 +81,22 @@ export default function Waveform({ isSimulating }) {
 
         const centerY = height * 0.85;
 
-        // Clear background
-        ctx.fillStyle = '#050505';
+        // Clear background with gradient
+        const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width, height));
+        bgGradient.addColorStop(0, '#0a0a12');
+        bgGradient.addColorStop(0.5, '#050508');
+        bgGradient.addColorStop(1, '#000000');
+        ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, width, height);
 
         // Config
-        const totalCols = 200;
+        const totalCols = 400;
         const step = Math.floor(data.length / totalCols) || 1;
 
         // 3D Constants
         const FOCAL_LENGTH = 300;
         const Z_SPACING = 20;
-        const X_SPACING = 15;
+        const X_SPACING = 7.5;
 
         // Camera Params
         const CAMERA_HEIGHT = P.camHeight;
@@ -217,7 +225,7 @@ export default function Waveform({ isSimulating }) {
 
 
         // 3. RENDER LOOP
-        const project = (r, c, worldY) => {
+        const project = (r, c, worldY, particleHeight) => {
             const wx = (c - totalCols / 2) * X_SPACING;
             const wz = r * Z_SPACING;
 
@@ -235,23 +243,62 @@ export default function Waveform({ isSimulating }) {
             const sy = centerY - (ry * scale);
 
             const alpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2)));
-            return { x: sx, y: sy, scale, alpha };
+            // Intensity based on particle height (0-1, clamped), with NaN protection
+            const rawIntensity = particleHeight / (height * 0.3);
+            const intensity = Math.max(0, Math.min(1, isNaN(rawIntensity) ? 0 : rawIntensity));
+            return { x: sx, y: sy, scale, alpha, intensity, depth: rz };
         };
 
-        ctx.lineWidth = 1;
+        // Compression function - keeps lines closer at high amplitudes (stretchy feel)
+        const compress = (y) => {
+            if (y <= 0) return 0;
+            // Soft compression: fast rise initially, then compresses
+            return P.maxStretch * (1 - Math.exp(-y / P.maxStretch));
+        };
 
         const finalPoints = [];
         for (let r = 0; r < GRID_ROWS; r++) {
             finalPoints[r] = [];
             for (let c = 0; c < totalCols; c++) {
                 let audioY = gridRef.current[r][c].y;
-                const totalY = Math.max(0, audioY + 5);
-                finalPoints[r][c] = project(r, c, totalY);
+                const compressedY = compress(audioY);
+                const totalY = Math.max(0, compressedY + 5);
+                finalPoints[r][c] = project(r, c, totalY, compressedY);
             }
         }
 
-        // Horizontal Lines
+        // Helper: Get color based on intensity (green spectrum)
+        const getColor = (intensity, alpha) => {
+            // Hue: 150 (teal-green) -> 90 (lime) based on intensity
+            const hue = 150 - intensity * 60;
+            const saturation = 70 + intensity * 30;
+            const lightness = 45 + intensity * 25;
+            return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+        };
+
+        // Horizontal Lines with glow and dynamic thickness
+        // shadowBlur disabled - too expensive, using CSS filter instead
+        const enableGlow = false;
+        if (enableGlow) ctx.shadowColor = 'rgba(100, 255, 100, 0.8)';
+
         for (let r = 0; r < GRID_ROWS; r++) {
+            // Calculate average intensity for this row
+            let rowIntensity = 0;
+            let validPoints = 0;
+            for (let c = 0; c < totalCols; c++) {
+                const p = finalPoints[r][c];
+                if (p) { rowIntensity += p.intensity; validPoints++; }
+            }
+            rowIntensity = validPoints > 0 ? rowIntensity / validPoints : 0;
+
+            // Dynamic line thickness based on proximity to center and intensity
+            const proximityFactor = 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2));
+            const baseThickness = 0.5 + proximityFactor * 1.5 + rowIntensity * 2;
+            ctx.lineWidth = Math.max(0.5, baseThickness);
+
+            // Glow intensity based on row activity
+            if (enableGlow) ctx.shadowBlur = 15 + rowIntensity * 25;
+
             ctx.beginPath();
             let started = false;
             for (let c = 0; c < totalCols; c++) {
@@ -260,15 +307,30 @@ export default function Waveform({ isSimulating }) {
                 if (!started) { ctx.moveTo(p.x, p.y); started = true; }
                 else { ctx.lineTo(p.x, p.y); }
             }
-            const rowAlpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2.5))) * 0.5;
+            const rowAlpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2.5))) * 0.6;
             if (rowAlpha > 0) {
-                ctx.strokeStyle = `rgba(0, 255, 255, ${rowAlpha})`;
+                ctx.strokeStyle = getColor(rowIntensity, rowAlpha);
                 ctx.stroke();
             }
         }
 
-        // Vertical Lines
+        // Vertical Lines with subtle glow
+        if (enableGlow) {
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(100, 220, 100, 0.5)';
+        }
+        ctx.lineWidth = 0.5;
+
         for (let c = 0; c < totalCols; c++) {
+            // Calculate average intensity for this column
+            let colIntensity = 0;
+            let validPoints = 0;
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const p = finalPoints[r][c];
+                if (p) { colIntensity += p.intensity; validPoints++; }
+            }
+            colIntensity = validPoints > 0 ? colIntensity / validPoints : 0;
+
             ctx.beginPath();
             let started = false;
             for (let r = 0; r < GRID_ROWS; r++) {
@@ -277,22 +339,37 @@ export default function Waveform({ isSimulating }) {
                 if (!started) { ctx.moveTo(p.x, p.y); started = true; }
                 else { ctx.lineTo(p.x, p.y); }
             }
-            ctx.strokeStyle = `rgba(0, 200, 255, 0.15)`;
+            const alpha = 0.1 + colIntensity * 0.15;
+            ctx.strokeStyle = getColor(colIntensity * 0.5, alpha);
             ctx.stroke();
         }
 
-        // Dots
+        // Dots with glow based on intensity
+        if (enableGlow) ctx.shadowColor = 'rgba(180, 255, 180, 0.9)';
+
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < totalCols; c++) {
                 const p = finalPoints[r][c];
                 if (!p || p.alpha < 0.05) continue;
-                const size = 1.5 * p.scale;
-                ctx.fillStyle = `rgba(180, 240, 255, ${p.alpha})`;
+
+                // Dynamic size: base + intensity bonus
+                const size = (1.2 + p.intensity * 1.5) * p.scale;
+
+                // Glow based on intensity
+                if (enableGlow) ctx.shadowBlur = 10 + p.intensity * 20;
+
+                // Color shifts within green spectrum based on intensity
+                const hue = 150 - p.intensity * 60;
+                ctx.fillStyle = `hsla(${hue}, 100%, ${60 + p.intensity * 30}%, ${p.alpha * (0.6 + p.intensity * 0.4)})`;
+
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, Math.max(0.5, size), 0, Math.PI * 2);
                 ctx.fill();
             }
         }
+
+        // Reset shadow for next frame
+        if (enableGlow) ctx.shadowBlur = 0;
 
         requestRef.current = requestAnimationFrame(draw);
     };
@@ -304,7 +381,7 @@ export default function Waveform({ isSimulating }) {
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, background: '#000' }}>
-            <canvas ref={canvasRef} />
+            <canvas ref={canvasRef} style={{ filter: `blur(${params.blur}px)` }} />
 
             {/* Control Panel */}
             {showControls && (
@@ -318,13 +395,15 @@ export default function Waveform({ isSimulating }) {
                     {/* Controls Generator */}
                     {Object.keys(DEFAULT_PARAMS).map((key) => {
                         let min, max, step;
-                        if (key === 'camHeight') { min = 10; max = 200; step = 5; }
+                        if (key === 'camHeight') { min = 10; max = 500; step = 10; }
                         else if (key === 'camZ') { min = -500; max = 0; step = 10; }
                         else if (key === 'gravity') { min = 0.01; max = 1.0; step = 0.01; }
                         else if (key === 'attack') { min = 0.01; max = 1.0; step = 0.01; }
-                        else if (key === 'decay') { min = 0.1; max = 0.999; step = 0.001; } // User requested full range 0-1
+                        else if (key === 'decay') { min = 0.1; max = 0.9999; step = 0.0001; } // Extended range for longer-lasting waves
                         else if (key === 'elasticity') { min = 0.1; max = 0.99; step = 0.01; }
                         else if (key === 'smoothing') { min = 0; max = 20; step = 1; } // Radius 0-20
+                        else if (key === 'maxStretch') { min = 50; max = 500; step = 10; }
+                        else if (key === 'blur') { min = 0; max = 5; step = 0.5; }
                         else { min = 0.1; max = 3.0; step = 0.1; } // Sensitivity
 
                         return (
