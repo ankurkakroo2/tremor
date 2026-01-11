@@ -1,4 +1,4 @@
-# Particle Waveform Visualization
+# Tremor
 
 A high-performance, interactive 3D particle waveform simulation built with React, Vite, and HTML5 Canvas. This project visualizes audio input as a dynamic, elastic mesh of particles.
 
