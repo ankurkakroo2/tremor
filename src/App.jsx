@@ -1,11 +1,51 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 // import Waveform from './components/Waveform' // Canvas 2D version
 import WaveformGL from './components/WaveformGL' // WebGL version
 import './index.css'
 
+function usePerformanceMonitor() {
+  const fpsRef = useRef(null)
+  const frameTimesRef = useRef([])
+  const animationFrameRef = useRef(null)
+  const lastTimeRef = useRef(performance.now())
+
+  useEffect(() => {
+    const updateFPS = () => {
+      const now = performance.now()
+      const delta = now - lastTimeRef.current
+      lastTimeRef.current = now
+
+      frameTimesRef.current.push(delta)
+      if (frameTimesRef.current.length > 60) {
+        frameTimesRef.current.shift()
+      }
+
+      const avgDelta = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length
+      const fps = avgDelta > 0 ? Math.round(1000 / avgDelta) : 0
+
+      if (fpsRef.current) {
+        fpsRef.current.textContent = `${fps} fps`
+      }
+
+      animationFrameRef.current = requestAnimationFrame(updateFPS)
+    }
+
+    animationFrameRef.current = requestAnimationFrame(updateFPS)
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [])
+
+  return fpsRef
+}
+
 function App() {
   const [isSimulating, setIsSimulating] = useState(false)
   const [started, setStarted] = useState(false)
+  const fpsRef = usePerformanceMonitor()
 
   const handleStartMic = () => {
     setIsSimulating(false)
@@ -19,6 +59,7 @@ function App() {
 
   return (
     <>
+      <div ref={fpsRef} className="fps-counter" />
       {!started ? (
         <div className="landing-overlay">
           <div className="content">
