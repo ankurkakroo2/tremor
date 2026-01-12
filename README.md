@@ -1,6 +1,10 @@
-# Particle Waveform Visualization
+# Tremor
 
 A high-performance, interactive 3D particle waveform simulation built with React, Vite, and HTML5 Canvas. This project visualizes audio input as a dynamic, elastic mesh of particles.
+
+Deployed at: https://tremor-two.vercel.app/
+
+<img width="3188" height="2112" alt="image" src="https://github.com/user-attachments/assets/3e433a1a-8ebb-46b9-9133-da59d24e1674" />
 
 ## Features
 
