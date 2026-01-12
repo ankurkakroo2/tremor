@@ -60,7 +60,7 @@ const ControlSlider = ({ label, value, min, max, step, onChange, info }) => (
     </div>
 );
 
-export default function Waveform({ isSimulating }) {
+export default function Waveform({ isSimulating, isMuted }) {
     const canvasRef = useRef(null);
     const { initAudio, getWaveformData, isReady, error } = useAudioAnalyzer({
         fftSize: 2048,
@@ -71,6 +71,11 @@ export default function Waveform({ isSimulating }) {
     const gridRef = useRef([]);
     const timeRef = useRef(0);
     const lineOpacityRef = useRef(0);
+    const isMutedRef = useRef(isMuted);
+
+    useEffect(() => {
+        isMutedRef.current = isMuted;
+    }, [isMuted]);
 
     const [params, setParams] = useState(DEFAULT_PARAMS);
     const [showControls, setShowControls] = useState(true);
@@ -110,6 +115,11 @@ export default function Waveform({ isSimulating }) {
 
         const ctx = canvas.getContext('2d');
         const data = getWaveformData();
+
+        // Handle Mute (Silence = 128 for byte time domain)
+        if (isMutedRef.current && !isSimulating) {
+            data.fill(128);
+        }
 
         if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
             canvas.width = window.innerWidth;
