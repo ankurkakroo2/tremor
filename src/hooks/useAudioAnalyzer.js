@@ -8,17 +8,13 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
   const sourceRef = useRef(null);
   const streamRef = useRef(null);
   const simulationTimeRef = useRef(0);
-  const dataArrayRef = useRef(null);
 
   useEffect(() => {
-    dataArrayRef.current = new Uint8Array(options.fftSize);
     let isMounted = true;
+    setIsReady(false); // Reset ready state on options change or mount
+    setError(null); // Clear previous errors
 
     const init = async () => {
-      if (!isMounted) return;
-      setIsReady(false);
-      setError(null);
-
       try {
         // 1. Create AudioContext if it doesn't exist or is closed
         if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -52,8 +48,8 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
         }
 
         if (options.simulation) {
-           // Simulation mode
-           if (isMounted) setIsReady(true);
+          // Simulation mode
+          if (isMounted) setIsReady(true);
         } else {
           // Microphone mode
           // Resume if suspended (browser requirements)
@@ -70,9 +66,9 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
           }
 
           if (ctx.state === 'closed') {
-             // Context got closed externally or by cleanup
-             stream.getTracks().forEach(t => t.stop());
-             return;
+            // Context got closed externally or by cleanup
+            stream.getTracks().forEach(t => t.stop());
+            return;
           }
 
           streamRef.current = stream;
@@ -108,30 +104,50 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
       // We rely on the `isMounted` and `ctx.state` checks above.
       // For this app, let's close it on unmount to be clean.
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-         audioContextRef.current.close().catch(e => console.error("Error closing context", e));
-         audioContextRef.current = null;
+        audioContextRef.current.close().catch(e => console.error("Error closing context", e));
+        audioContextRef.current = null;
       }
     };
   }, [options.fftSize, options.simulation]);
 
-  const getWaveformData = useCallback(() => {
-    if (!analyzerRef.current && !options.simulation) return dataArrayRef.current || new Uint8Array(options.fftSize);
+  const toggleSimulation = useCallback((enabled) => {
+    // This hook assumes efficient toggling might be needed,
+    // but simplified: consumer just changes key to re-init or we handle it here.
+    // For now, we rely on the `simulation` prop triggering re-init logic if handled in useEffect,
+    // but to avoid full re-mount, we can just switch data source logic.
+    // However, for this MVP, re-initialization is safer.
+  }, []);
 
-    const dataArray = dataArrayRef.current;
+  // Function to get current waveform data
+  const getWaveformData = useCallback(() => {
+    if (!analyzerRef.current && !options.simulation) return new Uint8Array(options.fftSize);
+
+    const dataArray = new Uint8Array(options.fftSize);
 
     if (options.simulation) {
+      // Simulation Physics: Random/Unpredictable Pattern
       simulationTimeRef.current += 0.05;
       const t = simulationTimeRef.current;
-      const fftSize = options.fftSize;
-      const data = dataArray;
 
-      for (let i = 0; i < fftSize; i++) {
-        const x = (i / fftSize) * Math.PI * 8;
-        const val = 128 +
-          Math.sin(x + t) * 40 +
-          Math.sin(x * 3 + t * 2) * 15 +
-          (Math.random() - 0.5) * 2;
-        data[i] = Math.max(0, Math.min(255, val));
+      for (let i = 0; i < options.fftSize; i++) {
+        // Base noise layer
+        const scale = i / options.fftSize;
+
+        let val = 128; // Center line
+
+        // 1. Slow drifting random waves (mimics wind/water)
+        val += Math.sin(scale * 10 + t * 0.5) * 20 * Math.sin(t * 0.2);
+        val += Math.cos(scale * 20 - t * 0.8) * 15;
+
+        // 2. Sporadic "Spikes" or "Drops" (mimics sudden sound events)
+        if (Math.random() > 0.98) {
+          val += (Math.random() - 0.5) * 150;
+        }
+
+        // 3. High frequency jitter
+        val += (Math.random() - 0.5) * 10;
+
+        dataArray[i] = Math.max(0, Math.min(255, val));
       }
     } else if (analyzerRef.current) {
       analyzerRef.current.getByteTimeDomainData(dataArray);
@@ -142,9 +158,9 @@ export function useAudioAnalyzer(options = { fftSize: 2048, simulation: false })
 
   // Expose initAudio as dummy if needed, but logic is now in useEffect
   const initAudio = useCallback(async () => {
-     // Main logic moved to useEffect to handle lifecycle better
-     // This function is now a no-op as initialization is handled by useEffect.
-     // You might remove it from the returned object if it's no longer needed externally.
+    // Main logic moved to useEffect to handle lifecycle better
+    // This function is now a no-op as initialization is handled by useEffect.
+    // You might remove it from the returned object if it's no longer needed externally.
   }, []);
 
   return { initAudio, getWaveformData, isReady, error };
