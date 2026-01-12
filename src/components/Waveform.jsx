@@ -16,7 +16,7 @@ const TOOLS_INFO = {
     showLines: "Toggle connection lines. 0 = Off, 1 = On."
 };
 
-const DEFAULT_PARAMS = {
+const INITIAL_PARAMS = {
     sensitivity: 0.8,
     gravity: 0.2,
     attack: 0.25,
@@ -31,12 +31,16 @@ const DEFAULT_PARAMS = {
     showLines: 0
 };
 
+// ... (CONTROL_GROUPS context skipped, assume it is below)
+
 const CONTROL_GROUPS = {
     "Physics": ["gravity", "elasticity", "decay", "attack"],
     "Audio Response": ["sensitivity", "smoothing"],
     "Appearance": ["density", "showLines", "oceanAmp", "oceanSpeed"],
     "Camera": ["camHeight", "camZ"]
 };
+
+// ... (ControlSlider skipped)
 
 // Helper for sleek sliders
 const ControlSlider = ({ label, value, min, max, step, onChange, info }) => (
@@ -77,9 +81,23 @@ export default function Waveform({ isSimulating, isMuted }) {
         isMutedRef.current = isMuted;
     }, [isMuted]);
 
-    const [params, setParams] = useState(DEFAULT_PARAMS);
+    // Helper to load defaults
+    const loadDefaults = () => {
+        try {
+            const saved = localStorage.getItem('WAVEFORM_DEFAULTS');
+            if (saved) {
+                return { ...INITIAL_PARAMS, ...JSON.parse(saved) };
+            }
+        } catch (e) {
+            console.error("Failed to load defaults", e);
+        }
+        return INITIAL_PARAMS;
+    };
+
+    const [defaults, setDefaults] = useState(loadDefaults);
+    const [params, setParams] = useState(loadDefaults);
     const [showControls, setShowControls] = useState(true);
-    const paramsRef = useRef(DEFAULT_PARAMS);
+    const paramsRef = useRef(loadDefaults());
 
     const updateParam = (key, value) => {
         const newParams = { ...params, [key]: parseFloat(value) };
@@ -87,13 +105,18 @@ export default function Waveform({ isSimulating, isMuted }) {
         paramsRef.current = newParams;
     };
 
+    const saveDefaults = () => {
+        setDefaults(params);
+        localStorage.setItem('WAVEFORM_DEFAULTS', JSON.stringify(params));
+    };
+
     useEffect(() => {
         updateParam('showLines', isSimulating ? 1 : 0);
     }, [isSimulating]);
 
     const resetParams = () => {
-        setParams(DEFAULT_PARAMS);
-        paramsRef.current = DEFAULT_PARAMS;
+        setParams(defaults);
+        paramsRef.current = defaults;
     };
 
     const GRID_ROWS = 100;
@@ -118,7 +141,7 @@ export default function Waveform({ isSimulating, isMuted }) {
 
         // Handle Mute (Silence = 128 for byte time domain)
         if (isMutedRef.current && !isSimulating) {
-            data.fill(128);
+            data.fill(128); // Force silence
         }
 
         if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
@@ -387,6 +410,13 @@ export default function Waveform({ isSimulating, isMuted }) {
                             <span style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', letterSpacing: '1px' }}>SYSTEM CONTROLS</span>
                         </div>
                         <div style={{ display: 'flex', gap: '10px' }}>
+                            <button onClick={saveDefaults} style={{
+                                background: 'transparent', color: '#0ff', border: '1px solid rgba(0,255,255,0.3)',
+                                borderRadius: '4px', padding: '4px 12px', fontSize: '11px', cursor: 'pointer',
+                                transition: 'all 0.2s', marginRight: '10px'
+                            }}>
+                                SAVE AS DEFAULT
+                            </button>
                             <button onClick={resetParams} style={{
                                 background: 'transparent', color: '#ff4444', border: '1px solid rgba(255,68,68,0.3)',
                                 borderRadius: '4px', padding: '4px 12px', fontSize: '11px', cursor: 'pointer',
