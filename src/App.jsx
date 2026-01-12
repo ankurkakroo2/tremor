@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-// import Waveform from './components/Waveform' // Canvas 2D version
-import WaveformGL from './components/WaveformGL' // WebGL version
+import Waveform from './components/Waveform' // Canvas 2D version
+// import WaveformGL from './components/WaveformGL' // WebGL version
 import './index.css'
 
 function usePerformanceMonitor() {
