@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-// import Waveform from './components/Waveform' // Canvas 2D version
-import WaveformGL from './components/WaveformGL' // WebGL version
+import Waveform from './components/Waveform' // Canvas 2D version
+// import WaveformGL from './components/WaveformGL' // WebGL version
 import './index.css'
 
 function usePerformanceMonitor() {
@@ -44,6 +44,7 @@ function usePerformanceMonitor() {
 
 function App() {
   const [isSimulating, setIsSimulating] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
   const [started, setStarted] = useState(false)
   const fpsRef = usePerformanceMonitor()
 
@@ -82,16 +83,24 @@ function App() {
         </div>
       ) : (
         <>
-          {/* <Waveform isSimulating={isSimulating} /> */}
-          <WaveformGL isSimulating={isSimulating} />
+          <Waveform isSimulating={isSimulating} isMuted={isMuted} />
 
-          <div className="active-controls">
+          <div className="active-controls" style={{ display: 'flex', gap: '10px' }}>
             <button
               onClick={() => setIsSimulating(!isSimulating)}
               className="btn-glass"
             >
               Switch to {isSimulating ? 'Microphone' : 'Simulation'}
             </button>
+            {!isSimulating && (
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className="btn-glass"
+                style={{ background: isMuted ? 'rgba(255, 50, 50, 0.3)' : undefined }}
+              >
+                {isMuted ? 'Unmute Mic' : 'Mute Mic'}
+              </button>
+            )}
           </div>
         </>
       )}
