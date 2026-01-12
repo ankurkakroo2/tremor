@@ -17,8 +17,8 @@ const TOOLS_INFO = {
 };
 
 const DEFAULT_PARAMS = {
-    sensitivity: 0.8,
-    gravity: 0.2,
+    sensitivity: 1.5,
+    gravity: 0.5,
     attack: 0.25,
     decay: 0.98,
     elasticity: 0.9,
@@ -121,8 +121,12 @@ export default function Waveform({ isSimulating }) {
         const P = paramsRef.current;
         const centerY = height * 0.95;
 
-        // Clear background
-        ctx.fillStyle = '#050505';
+        // Clear background with gradient
+        const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width, height));
+        bgGradient.addColorStop(0, '#0a0a12');
+        bgGradient.addColorStop(0.5, '#050508');
+        bgGradient.addColorStop(1, '#000000');
+        ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, width, height);
 
         // Config
@@ -257,7 +261,7 @@ export default function Waveform({ isSimulating }) {
 
 
         // 3. RENDER LOOP
-        const project = (r, c, worldY) => {
+        const project = (r, c, worldY, particleHeight) => {
             const wx = (c - totalCols / 2) * X_SPACING;
             const wz = r * Z_SPACING;
 
@@ -282,18 +286,27 @@ export default function Waveform({ isSimulating }) {
             sy += curve;
 
             const alpha = Math.max(0, 1.0 - (Math.abs(r - centerRow) / (GRID_ROWS / 2)));
-            return { x: sx, y: sy, scale, alpha };
+            // Intensity based on particle height (0-1, clamped), with NaN protection
+            const rawIntensity = particleHeight / (height * 0.3);
+            const intensity = Math.max(0, Math.min(1, isNaN(rawIntensity) ? 0 : rawIntensity));
+            return { x: sx, y: sy, scale, alpha, intensity, depth: rz };
         };
 
-        ctx.lineWidth = 1;
+        // Compression function - keeps lines closer at high amplitudes (stretchy feel)
+        const compress = (y) => {
+            if (y <= 0) return 0;
+            // Soft compression: fast rise initially, then compresses
+            return P.maxStretch * (1 - Math.exp(-y / P.maxStretch));
+        };
 
         const finalPoints = [];
         for (let r = 0; r < GRID_ROWS; r++) {
             finalPoints[r] = [];
             for (let c = 0; c < totalCols; c++) {
                 let audioY = gridRef.current[r][c].y;
-                const totalY = Math.max(0, audioY + 5);
-                finalPoints[r][c] = project(r, c, totalY);
+                const compressedY = compress(audioY);
+                const totalY = Math.max(0, compressedY + 5);
+                finalPoints[r][c] = project(r, c, totalY, compressedY);
             }
         }
 
@@ -332,18 +345,32 @@ export default function Waveform({ isSimulating }) {
             }
         }
 
-        // Dots
+        // Dots with glow based on intensity
+        if (enableGlow) ctx.shadowColor = 'rgba(180, 255, 180, 0.9)';
+
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < totalCols; c++) {
                 const p = finalPoints[r][c];
                 if (!p || p.alpha < 0.05) continue;
-                const size = 1.5 * p.scale;
-                ctx.fillStyle = `rgba(180, 240, 255, ${p.alpha})`;
+
+                // Dynamic size: base + intensity bonus
+                const size = (1.2 + p.intensity * 1.5) * p.scale;
+
+                // Glow based on intensity
+                if (enableGlow) ctx.shadowBlur = 10 + p.intensity * 20;
+
+                // Color shifts within green spectrum based on intensity
+                const hue = 150 - p.intensity * 60;
+                ctx.fillStyle = `hsla(${hue}, 100%, ${60 + p.intensity * 30}%, ${p.alpha * (0.6 + p.intensity * 0.4)})`;
+
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, Math.max(0.5, size), 0, Math.PI * 2);
                 ctx.fill();
             }
         }
+
+        // Reset shadow for next frame
+        if (enableGlow) ctx.shadowBlur = 0;
 
         requestRef.current = requestAnimationFrame(draw);
     };
@@ -355,7 +382,7 @@ export default function Waveform({ isSimulating }) {
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, background: '#000' }}>
-            <canvas ref={canvasRef} />
+            <canvas ref={canvasRef} style={{ filter: `blur(${params.blur}px)` }} />
 
             {/* Modern Control Panel */}
             {showControls && (

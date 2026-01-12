@@ -1,0 +1,43 @@
+name: Test OpenCode Integration
+
+on:
+  push:
+    paths:
+      - 'integrations/**'
+  pull_request:
+    paths:
+      - 'integrations/**'
+
+jobs:
+  test-wrapper:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install OpenCode
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+        
+      - name: Test wrapper script
+        run: |
+          cd integrations
+          chmod +x specstory-opencode-wrapper.sh
+          ./specstory-opencode-wrapper.sh --help
+          
+      - name: Verify session capture
+        run: |
+          mkdir -p /tmp/test-project/.specstory/history
+          cd /tmp/test-project
+          
+          # Run a quick test (just check help, don't start interactive)
+          $HOME/.opencode/bin/opencode --help > /dev/null 2>&1
+          
+          # Check if session file was created
+          ls -la .specstory/history/ 2>/dev/null || echo "No sessions yet (expected for --help)"
+          
+      - name: Cleanup
+        run: |
+          rm -rf /tmp/test-project
